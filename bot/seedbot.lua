@@ -226,10 +226,10 @@ function create_config( )
     "leave_ban",
     "admin"
     },
-    sudo_users = {122810240},--Sudo users
+    sudo_users = {141804007},--Sudo users
     disabled_channels = {},
     moderation = {data = 'data/moderation.json'},
-    about_text = [[Telemagma v:start 
+    about_text = [[Telemeed v:1 
 ]],
     help_text_realm = [[
 Realm Commands:
