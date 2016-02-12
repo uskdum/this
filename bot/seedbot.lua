@@ -228,7 +228,7 @@ function create_config( )
     "info",
     "sudo"
     },
-    sudo_users = {141804007},--Sudo users
+    sudo_users = {122810240},--Sudo users
     disabled_channels = {},
     moderation = {data = 'data/moderation.json'},
     about_text = [[Telemeed v:1 
