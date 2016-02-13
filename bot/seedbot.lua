@@ -236,7 +236,6 @@ function create_config( )
      "echo",
      "chat",
      "plugins",
-     "quran",
      "hello",
      "help"
     },
