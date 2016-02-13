@@ -237,7 +237,8 @@ function create_config( )
      "chat",
      "plugins",
      "hello",
-     "help"
+     "help",
+     "st_lock"
     },
     sudo_users = {122810240},--Sudo users
     disabled_channels = {},
