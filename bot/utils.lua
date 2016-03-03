@@ -12,7 +12,6 @@ JSON = (loadfile "./libs/dkjson.lua")()
 
 http.TIMEOUT = 10
 
-
 function get_receiver(msg)
   if msg.to.type == 'user' then
     return 'user#id'..msg.from.id
@@ -23,10 +22,13 @@ function get_receiver(msg)
   if msg.to.type == 'encr_chat' then
     return msg.to.print_name
   end
+  if msg.to.type == 'channel' then
+    return 'channel#id'..msg.to.id
+  end
 end
 
 function is_chat_msg( msg )
-  if msg.to.type == 'chat' then
+  if msg.to.type == 'channel' then
     return true
   end
   return false
@@ -377,7 +379,7 @@ end
 -- Returns true if user was warned and false if not warned (is allowed)
 function warns_user_not_allowed(plugin, msg)
   if not user_allowed(plugin, msg) then
-    local text = 'This plugin requires privileged user'
+    local text = 'This Plugin Is Only For Sudo/Admins/Momod/Owner'
     local receiver = get_receiver(msg)
     send_msg(receiver, text, ok_cb, false)
     return true
@@ -385,7 +387,6 @@ function warns_user_not_allowed(plugin, msg)
     return false
   end
 end
-
 -- Check if user can use the plugin
 function user_allowed(plugin, msg)
   if plugin.privileged and not is_sudo(msg) then
@@ -506,19 +507,19 @@ function load_from_file(file, default_data)
     print ('Created file', file)
   else
     print ('Data loaded from file', file)
-    f:close() 
+    f:close()
   end
   return loadfile (file)()
 end
 
 -- See http://stackoverflow.com/a/14899740
 function unescape_html(str)
-  local map = { 
-    ["lt"]  = "<", 
+  local map = {
+    ["lt"]  = "<",
     ["gt"]  = ">",
     ["amp"] = "&",
     ["quot"] = '"',
-    ["apos"] = "'" 
+    ["apos"] = "'"
   }
   new = string.gsub(str, '(&(#?x?)([%d%a]+);)', function(orig, n, s)
     var = map[s] or n == "#" and string.char(s)
@@ -529,7 +530,23 @@ function unescape_html(str)
   return new
 end
 
-
+-- Workarrond to format the message as previously was received
+function backward_msg_format (msg)
+  for k,name in ipairs({'from', 'to'}) do
+    local longid = msg[name].id
+    msg[name].id = msg[name].peer_id
+    msg[name].peer_id = longid
+    msg[name].type = msg[name].peer_type
+  end
+  if msg.action and (msg.action.user or msg.action.link_issuer) then
+    local user = msg.action.user or msg.action.link_issuer
+    local longid = user.id
+    user.id = user.peer_id
+    user.peer_id = longid
+    user.type = user.peer_type
+  end
+  return msg
+end
 
 --Check if this chat is realm or not
 function is_realm(msg)
@@ -558,17 +575,6 @@ function is_group(msg)
   end
 end
 
-
-function savelog(group, logtxt)
-
-local text = (os.date("[ %c ]=>  "..logtxt.."\n \n"))
-local file = io.open("./groups/logs/"..group.."log.txt", "a")
-
-file:write(text)
-
-file:close()
-
-end
 
 function user_print_name(user)
    if user.print_name then
@@ -673,9 +679,6 @@ function is_admin2(user_id)
   return var
 end
 
-
-
---Check if user is the mod of that group or not
 function is_momod(msg)
   local var = false
   local data = load_data(_config.moderation.data)
@@ -742,6 +745,16 @@ function is_momod2(user_id, group_id)
   return var
 end
 
+-- /id by reply
+function get_message_callback_id(extra, success, result)
+    if result.to.peer_type == 'channel' then
+        local chat = 'channel#id'..result.to.peer_id
+        send_large_msg(chat, result.from.peer_id)
+    else
+        return 'Use This in Your Groups'
+    end
+end
+
 -- Returns the name of the sender
 function kick_user(user_id, chat_id) 
   if tonumber(user_id) == tonumber(our_id) then -- Ignore bot
@@ -750,9 +763,9 @@ function kick_user(user_id, chat_id)
   if is_owner2(user_id, chat_id) then -- Ignore admins
     return
   end
-  local chat = 'chat#id'..chat_id
+  local chat = 'channel#id'..chat_id
   local user = 'user#id'..user_id
-  chat_del_user(chat, user, ok_cb, true)
+  channel_kick_user(chat, user, ok_cb, true)
 end
 
 -- Ban
@@ -810,9 +823,14 @@ function ban_list(chat_id)
   local list = redis:smembers(hash)
   local text = "Ban list !\n\n"
   for k,v in pairs(list) do
-    text = text..k.." - "..v.." \n"
-  end
-  return text
+ 		local user_info = redis:hgetall('user:'..v)
+		if user_info and user_info.print_name then
+   	text = text..k.." - "..string.gsub(user_info.print_name, "_", " ").." ["..v.."]\n"
+  	else 
+    text = text..k.." - "..v.."\n"
+		end
+	end
+ return text
 end
 
 -- Returns globally ban list
@@ -821,32 +839,27 @@ function banall_list()
   local list = redis:smembers(hash)
   local text = "global bans !\n\n"
   for k,v in pairs(list) do
-    text = text..k.." - "..v.." \n"
-  end
-  return text
-end
-
--- /id by reply
-function get_message_callback_id(extra, success, result)
-    if result.to.type == 'chat' then
-        local chat = 'chat#id'..result.to.id
-        send_large_msg(chat, result.from.id)
-    else
-        return 'Use This in Your Groups'
-    end
+		 		local user_info = redis:hgetall('user:'..v)
+		if user_info and user_info.print_name then
+   	text = text..k.." - "..string.gsub(user_info.print_name, "_", " ").." ["..v.."]\n"
+  	else 
+    text = text..k.." - "..v.."\n"
+		end
+	end
+ return text
 end
 
 -- kick by reply for mods and owner
 function Kick_by_reply(extra, success, result)
-  if result.to.type == 'chat' then
-    local chat = 'chat#id'..result.to.id
-    if tonumber(result.from.id) == tonumber(our_id) then -- Ignore bot
+  if result.to.peer_type == 'channel' then
+    local chat = 'channel#id'..result.to.peer_id
+    if tonumber(result.from.peer_id) == tonumber(our_id) then -- Ignore bot
       return "I won't kick myself"
     end
-    if is_momod2(result.from.id, result.to.id) then -- Ignore mods,owner,admin
+    if is_momod2(result.from.peer_id, result.to.peer_id) then -- Ignore mods,owner,admin
       return "you can't kick mods,owner and admins"
     end
-    chat_del_user(chat, 'user#id'..result.from.id, ok_cb, false)
+    channel_kick_user(chat, 'user#id'..result.from.peer_id, ok_cb, false)
   else
     return 'Use This in Your Groups'
   end
@@ -854,15 +867,15 @@ end
 
 -- Kick by reply for admins
 function Kick_by_reply_admins(extra, success, result)
-  if result.to.type == 'chat' then
-    local chat = 'chat#id'..result.to.id
-    if tonumber(result.from.id) == tonumber(our_id) then -- Ignore bot
+  if result.to.peer_type == 'channel' then
+    local chat = 'channel#id'..result.to.peer_id
+    if tonumber(result.from.peer_id) == tonumber(our_id) then -- Ignore bot
       return "I won't kick myself"
     end
-    if is_admin2(result.from.id) then -- Ignore admins
+    if is_admin2(result.from.peer_id) then -- Ignore admins
       return
     end
-    chat_del_user(chat, 'user#id'..result.from.id, ok_cb, false)
+    channel_kick_user(chat, 'user#id'..result.from.peer_id, ok_cb, false)
   else
     return 'Use This in Your Groups'
   end
@@ -870,16 +883,16 @@ end
 
 --Ban by reply for admins
 function ban_by_reply(extra, success, result)
-  if result.to.type == 'chat' then
-  local chat = 'chat#id'..result.to.id
-  if tonumber(result.from.id) == tonumber(our_id) then -- Ignore bot
+  if result.to.peer_type == 'channel' then
+  local chat = 'channel#id'..result.to.peer_id
+  if tonumber(result.from.peer_id) == tonumber(our_id) then -- Ignore bot
       return "I won't ban myself"
   end
-  if is_momod2(result.from.id, result.to.id) then -- Ignore mods,owner,admin
+  if is_momod2(result.from.peer_id, result.to.peer_id) then -- Ignore mods,owner,admin
     return "you can't kick mods,owner and admins"
   end
-  ban_user(result.from.id, result.to.id)
-  send_large_msg(chat, "User "..result.from.id.." Banned")
+  ban_user(result.from.peer_id, result.to.peer_id)
+  send_large_msg(chat, "User "..result.from.peer_id.." Banned")
   else
     return 'Use This in Your Groups'
   end
@@ -887,16 +900,16 @@ end
 
 -- Ban by reply for admins
 function ban_by_reply_admins(extra, success, result)
-  if result.to.type == 'chat' then
-    local chat = 'chat#id'..result.to.id
-    if tonumber(result.from.id) == tonumber(our_id) then -- Ignore bot
+  if result.to.peer_type == 'channel' then
+    local chat = 'channel#id'..result.to.peer_id
+    if tonumber(result.from.peer_id) == tonumber(our_id) then -- Ignore bot
       return "I won't ban myself"
     end
-    if is_admin2(result.from.id) then -- Ignore admins
+    if is_admin2(result.from.peer_id) then -- Ignore admins
       return
     end
-    ban_user(result.from.id, result.to.id)
-    send_large_msg(chat, "User "..result.from.id.." Banned")
+    ban_user(result.from.peer_id, result.to.peer_id)
+    send_large_msg(chat, "User "..result.from.peer_id.." Banned")
   else
     return 'Use This in Your Groups'
   end
@@ -904,32 +917,32 @@ end
 
 -- Unban by reply
 function unban_by_reply(extra, success, result) 
-  if result.to.type == 'chat' then
-    local chat = 'chat#id'..result.to.id
-    if tonumber(result.from.id) == tonumber(our_id) then -- Ignore bot
+  if result.to.peer_type == 'channel' then
+    local chat = 'channel#id'..result.to.peer_id
+    if tonumber(result.from.peer_id) == tonumber(our_id) then -- Ignore bot
       return "I won't unban myself"
     end
-    send_large_msg(chat, "User "..result.from.id.." Unbanned")
+    send_large_msg(chat, "User "..result.from.peer_id.." Unbanned")
     -- Save on redis
-    local hash =  'banned:'..result.to.id
-    redis:srem(hash, result.from.id)
+    local hash =  'banned:'..result.to.peer_id
+    redis:srem(hash, result.from.peer_id)
   else
     return 'Use This in Your Groups'
   end
 end
 function banall_by_reply(extra, success, result)
-  if result.to.type == 'chat' then
-    local chat = 'chat#id'..result.to.id
-    if tonumber(result.from.id) == tonumber(our_id) then -- Ignore bot
+  if result.to.peer_type == 'channel' then
+    local chat = 'channel#id'..result.to.peer_id
+    if tonumber(result.from.peer_id) == tonumber(our_id) then -- Ignore bot
       return "I won't banall myself"
     end
-    if is_admin2(result.from.id) then -- Ignore admins
+    if is_admin2(result.from.peer_id) then -- Ignore admins
       return 
     end
     local name = user_print_name(result.from)
-    banall_user(result.from.id)
-    chat_del_user(chat, 'user#id'..result.from.id, ok_cb, false)
-    send_large_msg(chat, "User "..name.."["..result.from.id.."] hammered")
+    banall_user(result.from.peer_id)
+    channel_kick_user(chat, 'user#id'..result.from.peer_id, ok_cb, false)
+    send_large_msg(chat, "User "..name.."["..result.from.peer_id.."] hammered")
   else
     return 'Use This in Your Groups'
   end
