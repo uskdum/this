@@ -112,4 +112,4 @@ else
   fi
 #By 
   ./tg/bin/telegram-cli -k ./tg/tg-server.pub -s ./bot/magmabot.lua -l 1 -E $@
-fi
+fi 
